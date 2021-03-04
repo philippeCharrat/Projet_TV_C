@@ -1,0 +1,310 @@
+C51 COMPILER V9.60.0.0   MASTER_MAIN                                                       03/04/2021 11:57:59 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE MASTER_MAIN
+OBJECT MODULE PLACED IN .\Objects\MASTER_Main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE MASTER_Main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listin
+                    -gs\MASTER_Main.lst) TABS(2) OBJECT(.\Objects\MASTER_Main.obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          // F0-M01.c
+   3          //
+   4          //Gestion des trames de commandes et d'informations
+   5          //Réception sur l'UART des commandes et stockage dans un tableau binaire
+   6          //Lecture dans un tableau des informations et envoie par l'UART
+   7          //-----------------------------------------------------------------------------
+   8          
+   9          #include <C8051F020.h>
+  10          #include <stdio.h>
+  11          #include <string.h>
+  12          #include "c8051F020_SFR16.h"
+  13          #include "MASTER_Config_Globale.h"
+  14          
+  15          // Prototypes de Fonctions
+  16          //Config
+  17          void Config_UART0(void);
+  18          void Config_interrupt(void);
+  19          void Config_Timer(void);
+  20          
+  21          //Utiles
+  22          void Send_char(char c);
+  23          void Interpretation_commande(void);
+  24          void Reception_chaine_UART(char* ptr_String_UART);
+  25          void Send_string(char*);
+  26          void Transmettre(char caractere, bit LF);
+  27          char* split_element(char* ptr_commande);
+  28          void Convertion(void);
+  29          
+  30          //Interrupt
+  31          void INT_UART0(void);
+  32          
+  33          //Variables utiles
+  34          //Reception de chaine
+  35          char fin_de_commande;
+  36          char bit_reception_UART;
+  37          char Lecture_String_UART[50] = '\r';
+  38          char* ptr_String_UART = &Lecture_String_UART[0];
+  39          char commande[16];
+  40          char params[5];
+  41          int i,j,k,m,l;
+  42          void Affichage_UART(char*);
+  43          char* ptrcommande; 
+  44              
+  45          //-----------------------------------------------------------------------------
+  46          // MAIN Routine
+  47          //-----------------------------------------------------------------------------
+  48          
+  49          void main (void) {
+  50   1        // Appel des configurations globales
+  51   1        Init_Device();  
+  52   1        Config_Timer();
+  53   1        Config_UART0();
+  54   1        
+C51 COMPILER V9.60.0.0   MASTER_MAIN                                                       03/04/2021 11:57:59 PAGE 2   
+
+  55   1        //Init variables
+  56   1        fin_de_commande = 0;
+  57   1        Send_string("SYSTEME OK !");
+  58   1      
+  59   1        while (1){
+  60   2          
+  61   2          if (RI0 == 1){
+  62   3          
+  63   3            RI0 = 0;
+  64   3            REN0 = 0;
+  65   3            
+  66   3            bit_reception_UART = SBUF0;
+  67   3            commande[i] = bit_reception_UART;
+  68   3            i++;
+  69   3            *(ptr_String_UART) = bit_reception_UART;
+  70   3            *(ptr_String_UART + 1) = '\0';
+  71   3            
+  72   3            Send_char(bit_reception_UART);
+  73   3            
+  74   3            if (bit_reception_UART == '\r'){
+  75   4              ptr_String_UART = &Lecture_String_UART[0];
+  76   4              Send_char('\n');
+  77   4              Send_string(commande);
+  78   4              i = 0;
+  79   4              Convertion();
+  80   4            }
+  81   3            else{ ptr_String_UART++;}
+  82   3            
+  83   3            REN0 = 1;     
+  84   3          }
+  85   2        }
+  86   1      }
+  87          
+  88          //-----------------------------------------------------------------------------
+  89          // Fonctions de configuration des divers périphériques et interruptions
+  90          //-----------------------------------------------------------------------------
+  91          void Config_interrupt(){
+  92   1      }
+  93          
+  94          void Config_UART0(void){
+  95   1        //SMOD0 dans PCON.7 à 0 pour garder la baud rate/2
+  96   1        //SM00 SM10 : 01 (mode 1)
+  97   1        //SM20 : 0 (valeur du bit de STOP ignorée)
+  98   1        //REN0 : 0 (reception desactivée)
+  99   1        //TB80 RB80 : 00 (valeur du bit lors de la Transmission/Reception dans le mode 2 ou 3)
+ 100   1        //TI0 RI0 : 00 (flag lors d'une fin de transmission/reception)
+ 101   1        SCON0 = (1<<6);
+ 102   1      }
+ 103          
+ 104          void Config_Timer() {
+ 105   1        
+ 106   1        //TIMER 2 (POUR UART)
+ 107   1        
+ 108   1        //TF2 EXF2 = 00 (flags interrupt)
+ 109   1        //RCLK0 TCLK0 : 11 (mode 2 baud rate generator receive et transmit)
+ 110   1        //EXEN2 : 0 (T2EX ignored)
+ 111   1        //TR2 : 0 (TIMER2 disabled)
+ 112   1        //C/T2 : 0 (SYSCLK used)
+ 113   1        //CP/RL2 : 0 (ignored in mode 2)
+ 114   1        RCAP2 = 0xFFDC; //Baud-rate de 19200
+ 115   1        T2CON = (3<<4);
+ 116   1        TR2 = 1; //start timer
+C51 COMPILER V9.60.0.0   MASTER_MAIN                                                       03/04/2021 11:57:59 PAGE 3   
+
+ 117   1      }
+ 118          
+ 119          //-----------------------------------------------------------------------------
+ 120          // Fonctions utiles
+ 121          //-----------------------------------------------------------------------------
+ 122          
+ 123          void Affichage_UART(char* mot){
+ 124   1          while (*mot != '\r'){
+ 125   2            if(*(mot+1) == '\0'){
+ 126   3              Transmettre(*mot, 1); //Fin de chaine
+ 127   3            }
+ 128   2            else {
+ 129   3              Transmettre(*mot, 0); //milieu du mot
+ 130   3            }
+ 131   2            mot++;
+ 132   2          }
+ 133   1      }
+ 134          
+ 135          //Recupere le caractere en attente dans SBUF0
+ 136          //et stocke la valeur dans le buffer de commande
+ 137          void Reception_chaine_UART(char* ptr_String_UART){
+ 138   1        char reception = SBUF0;
+ 139   1        //Lecture du caractere et stockage
+ 140   1        *(ptr_String_UART) = reception;
+ 141   1        
+ 142   1        //Si on recoit le caractere de fin de chaine c'est qu'on a recu la totalité de la commande
+ 143   1        //Arguments inclus
+ 144   1        if (reception == 0x0D){
+ 145   2          fin_de_commande = 1;
+ 146   2        }
+ 147   1        
+ 148   1        //MAJ de la position d'ecriture pour la commande en cours de reception
+ 149   1        ptr_String_UART++;
+ 150   1      }
+ 151          
+ 152          void Interpretation_commande(void){
+ 153   1        
+ 154   1      }
+ 155          
+ 156          void Send_string(char* mot){
+ 157   1          while (*mot != '\0'){
+ 158   2            if(*(mot+1) == '\r'){
+ 159   3              Transmettre(*mot, 1); //Fin de chaine
+ 160   3            }
+ 161   2            else {
+ 162   3              Transmettre(*mot, 0); //milieu du mot
+ 163   3            }
+ 164   2            mot++;
+ 165   2          }
+ 166   1      }
+ 167          
+ 168          void Send_char(char c){
+ 169   1        
+ 170   1        //Desactive reception
+ 171   1        REN0 = 0;
+ 172   1        SBUF0 = c;
+ 173   1        
+ 174   1        //Attente fin de transmission
+ 175   1        while(!TI0){}
+ 176   1          
+ 177   1            //Remise à 0 du flag d'envoi une fois qu'on est sur que le caractere a été transmis
+ 178   1        TI0 = 0;
+C51 COMPILER V9.60.0.0   MASTER_MAIN                                                       03/04/2021 11:57:59 PAGE 4   
+
+ 179   1        REN0 = 1;
+ 180   1      }
+ 181          
+ 182          void Transmettre(char caractere, bit LF){
+ 183   1        
+ 184   1        EA = 0;
+ 185   1        //desactive la reception
+ 186   1        REN0 = 0;
+ 187   1        
+ 188   1        //Ecrit la valeur dans SBUF0 pour transmettre
+ 189   1        SBUF0 = caractere;
+ 190   1        
+ 191   1        //Attente de la bonne transmission
+ 192   1        while(!TI0){}
+ 193   1          
+ 194   1        //Remise à 0 du flag d'envoi une fois qu'on est sur que le caractere a été transmis
+ 195   1        TI0 = 0;
+ 196   1        REN0 = 1;
+ 197   1          
+ 198   1        if(LF){Transmettre(0x0D, 0);
+ 199   2        Transmettre(0x0A, 0);} //Retour à la ligne
+ 200   1        EA = 1;
+ 201   1      }
+ 202          
+ 203          //-----------------------------------------------------------------------------
+ 204          // Fonctions d'interruptions
+ 205          //-----------------------------------------------------------------------------
+ 206          INT_UART0(void) interrupt 4{
+ 207   1        
+ 208   1      //Cas interruption car on a fini une transmission
+ 209   1        if (TI0 == 1){TI0 = 0;}
+ 210   1        
+ 211   1      //Cas interruption parce qu'on recoit une info
+ 212   1        if (RI0 == 1){
+ 213   2          
+ 214   2        //Remise des flag et desactivation temporaire de la reception
+ 215   2          REN0 = 0;
+ 216   2          RI0 = 0;
+ 217   2          
+ 218   2          //Stockage du caractere recu dans la chaine representant la commande en cours de reception
+ 219   2          Reception_chaine_UART(ptr_String_UART);
+ 220   2          Send_string(ptr_String_UART);
+ 221   2          REN0 = 1;
+ 222   2          //Si on a toute la commande il faut voir si elle est correcte, et dans le cas echeant la mettre dans une
+             - structure
+ 223   2          //Elle meme stockee dans un tableau
+ 224   2            if (fin_de_commande == 1){
+ 225   3              ptr_String_UART = &Lecture_String_UART[0];
+ 226   3              //interpretation /!\ desactiver les interruptions et la reception pendant le traitement pour eviter de
+             - refaire la lecture 
+ 227   3              //si une commande arrive pendant le traitement
+ 228   3              Send_string("Commande bien recue");
+ 229   3              REN0 = 1;
+ 230   3              //stockage
+ 231   3          }
+ 232   2        }
+ 233   1      }
+ 234          void Convertion(void) {
+ 235   1          k = 1;
+ 236   1          ptrcommande = &commande;
+ 237   1          ptrcommande = split_element(ptrcommande);
+ 238   1          if(k == 0) {
+C51 COMPILER V9.60.0.0   MASTER_MAIN                                                       03/04/2021 11:57:59 PAGE 5   
+
+ 239   2              //TODO : Fin de commande
+ 240   2          } else {
+ 241   2              if (params[0] == 'D' || params[0] == 'E' || params[0] == 'Q') {
+ 242   3                  //commande_epreuve(params[0],k);
+ 243   3                  Send_string(params);
+ 244   3              }    else if (params[0] == 'A' || params[0] == 'B' || params[0] == 'S' || params[0] == 'G'&& strcm
+             -p(params, "RD") == 0 && strcmp(params, "RG") == 0 && strcmp(params, "RA") == 0) {
+ 245   3                  //commande_mouvement(params[0],k);
+ 246   3              }    else if (strcmp(params, "ASS") == 0) {
+ 247   3                  //TODO : ACQ
+ 248   3              }    else if (strcmp(params, "MOB") == 0 ) {
+ 249   3                  //TODO : DCT
+ 250   3              }    else if (strcmp(params, "CS") == 0) {
+ 251   3                  //commande_servo();
+ 252   3              } else if (strcmp(params, "MI") == 0 && strcmp(params, "ME") == 0 ) {
+ 253   3                  // TODO : Energie
+ 254   3              }else if (strcmp(params, "IPO") == 0 && strcmp(params, "POS") == 0 ) {
+ 255   3                  //commande_position();
+ 256   3              }else if (strcmp(params, "L") == 0 && strcmp(params, "LS") == 0 ) {
+ 257   3                  //commande_lumiere();
+ 258   3              }else if (strcmp(params, "PPH") == 0 && strcmp(params, "SPH") == 0 ) {
+ 259   3                  //commande_photo();
+ 260   3              } else {
+ 261   3                  //erreur_commande();
+ 262   3              }
+ 263   2          }
+ 264   1      }   
+ 265          
+ 266          char* split_element(char* ptr_commande) {
+ 267   1        m = 0;
+ 268   1        while( *ptr_commande != ' ') {
+ 269   2          params[m] = *ptr_commande;
+ 270   2          m++;
+ 271   2          ptr_commande++;
+ 272   2        }   
+ 273   1      }
+*** WARNING C173 IN LINE 273 OF MASTER_Main.c: missing return-expression
+*** WARNING C290 IN LINE 273 OF MASTER_Main.c: missing return value
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    892    ----
+   CONSTANT SIZE    =     80    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     89       6
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  2 WARNING(S),  0 ERROR(S)
