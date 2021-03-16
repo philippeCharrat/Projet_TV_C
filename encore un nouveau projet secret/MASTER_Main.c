@@ -31,7 +31,6 @@ void Config_Timer(void);
 // Partie : Envoies et Réception des messages 
 void Send_char(char c);
 void Interpretation_commande(void);
-void Reception_chaine_UART(char* ptr_String_UART);
 void Send_string(char*);
 void Transmettre(char caractere, bit LF);
 void Affichage_UART(char*);
@@ -41,31 +40,44 @@ char* split_element(char* ptr_commande);
 int convertion_str_int(int k, char* ptr);
 struct argument_complexe param_complexe(char* params);
 int int_neg_or_positiv(int min, char* params);
+char* ajout_char(char* ptrmessage, char c);
+char* convertion_int_array(int); 
+void ajout_char_array(char* ptrbuffer, char* ptrmessage);
 
-// Partie : Convertion 
+
+// Partie : Convertion String to Structure (Array)
 void Convertion_S_to_A(void);
 void Convertion_Etat(char etat, char* ptrcommande);
 void Convertion_Mouvement(char *mouvement, char* ptrcommande);
+void Convertion_Detection(char* ptrcommande);
 void Convertion_Servomoteur(char* ptrcommande);
 void Convertion_Coord(char* params,char* ptrcommande);
 void Convertion_Lumineux(char* params, char* ptrcommande);
 void Convertion_Photo(char* params, char* ptrcommande);
 
+// Partie : Convertion Structure to String 
+void Convertion_A_to_S(void);
+char Convertion_Invite(char *ptrmessage);
+char Convertion_Arrive(char *ptrmessage);
+Convertion_Mesure(char type, char *ptrmessage);
+char Convertion_Info_Obstacle(char *ptrmessage);
+	
 // Variables globales utiles
 char fin_de_commande;
 char bit_reception_UART;
-
+char message_is_set;
 int i,j,k,m,fin_commande;
+
+// Variables char[] 
+char buffer[5];
+char commande[35];
+char params[15];
+char message[35];
 
 // Variables pointeurs 
 char* ptrcommande; 
-
-// Variables char[] 
-char buffer[3];
-char Lecture_String_UART[16] = '\r';
-char* ptr_String_UART = &Lecture_String_UART[0];
-char commande[16];
-char params[5];
+char* ptrmessage;
+char* ptrbuffer;
 
 // Définition des structures 
 typedef struct argument_complexe argument_complexe;
@@ -75,7 +87,7 @@ struct argument_complexe {
 };
 argument_complexe args;
 struct COMMANDES commandeenvoieStA;
-
+struct INFORMATIONS informationenvoieAtS;
 //-----------------------------------------------------------------------------
 // MAIN Routine
 //-----------------------------------------------------------------------------
@@ -101,16 +113,8 @@ void main (void) {
 			commande[i] = bit_reception_UART;
 			// Incrément du tab commande
 			i++;
-			// Utile ?
-			*(ptr_String_UART) = bit_reception_UART;
-			*(ptr_String_UART + 1) = '\0';
-			
-			//Send_char(bit_reception_UART);
 			// Si fin de commande 
-			if (bit_reception_UART == '\r'){
-				// RAZ pointeur et commande 
-				ptr_String_UART = &Lecture_String_UART[0];
-				
+			if (bit_reception_UART == '\r'){			
 				// Affichage en console
 				Send_char('\n');
 				Send_string("Commande recue : ");
@@ -118,9 +122,8 @@ void main (void) {
 				// Convertion de commande vers struct
 				Convertion_S_to_A();
 				i = 0;
+				fin_commande = 0;
 			}
-			else{	ptr_String_UART++;}
-			
 			REN0 = 1;			
 		}
 	}
@@ -148,29 +151,6 @@ void Config_Timer() {
 //-----------------------------------------------------------------------------
 // Fonctions UART et d'envoie
 //-----------------------------------------------------------------------------
-
-
-void Reception_chaine_UART(char* ptr_String_UART){
-	// But : Recupere le caractere en attente dans SBUF0 et stocke la valeur dans le buffer de commande 
-	// Input : 
-	//		- *ptr_String_UART : pointeur vers le buffer de commande
-	// Output : 
-	//		none
-	char reception = SBUF0;
-	//Lecture du caractere et stockage
-	*(ptr_String_UART) = reception;
-	//Si on recoit le caractere de fin de chaine c'est qu'on a recu la totalité de la commande
-	//Arguments inclus
-	if (reception == 0x0D){
-		fin_de_commande = 1;
-	}
-	//MAJ de la position d'ecriture pour la commande en cours de reception
-	ptr_String_UART++;
-}
-
-void Interpretation_commande(void){
-	
-}
 
 void Send_string(char* mot){
 	// But : Fonction pour envoyer une string de manière automatique 
@@ -254,6 +234,7 @@ char* split_element(char* ptr_commande) {
 		} else {
 			// Ajout dans le tableau params 
 			params[m] = *ptr_commande;
+			params[m+1] = '\0';
 			m++;
 			ptr_commande++;
 		}
@@ -309,11 +290,56 @@ int convertion_str_int(int k, char* params) {
 		if( params[j] == '1' || params[j] == '2'|| params[j] == '3'|| params[j] == '4'|| params[j] == '5'|| params[j] == '6'|| params[j] == '7'|| params[j] == '8'|| params[j] == '9'|| params[j] == '0') {
 			buffer[j-k]=params[j];
 		}
-		else { break; }
+		else { 
+			buffer[j-k]='\0';
+			break;
+		}
 	}
 	return atoi(buffer);		
 }
 
+char* convertion_int_array(int i) {
+	// But : Convertir plusieurs chars vers un int (absolue) : ['1','2'] => 12
+	// Input : 
+	//	- i : int 
+	// Output : 
+	//	- ptr : vers le buffer qui contient les chars
+	sprintf(buffer, "%d", i);
+	return &buffer[0];
+}
+
+void ajout_char_array(char* ptrbuffer, char* ptrmessage) {
+		// But : Convertir plusieurs chars vers un int (absolue) : ['1','2'] => 12
+	// Input : 
+	//		- *ptrmessage : pointeur vers le message
+	//		- *ptrbuffer : pointeur vers le buffer de int
+	// Output : 
+	//		none
+	while (1==1){
+		// Si le char est un digit
+		if( *ptrbuffer == '1' || *ptrbuffer == '2'|| *ptrbuffer == '3'|| *ptrbuffer == '4'|| *ptrbuffer == '5'|| *ptrbuffer == '6'|| *ptrbuffer == '7'|| *ptrbuffer == '8'|| *ptrbuffer == '9'|| *ptrbuffer == '0') {
+			ajout_char(ptrmessage, *ptrbuffer);
+			ptrbuffer++;
+		}
+		else { 
+			break;
+		}
+	}
+}
+char* ajout_char(char* ptrmessage, char c) {
+	// But : Ajout d'un char sur message
+	// Input : 
+	//		- ptrmessage : pointeur vers le message
+	//		- char : char à ajouter 
+	// Output : 
+	//		- ptrmessage : pointeur incrémenté
+	*ptrmessage = c;
+	return ptrmessage++;
+}
+
+//-----------------------------------------------------------------------------
+// Fonctions Convertion String vers Structure
+//-----------------------------------------------------------------------------
 
 void Convertion_S_to_A(void) {
 	// But : Récupérer la partie commande et appeler les fonctions correspondante
@@ -337,17 +363,7 @@ void Convertion_S_to_A(void) {
 			i = int_neg_or_positiv(0, params);
 			commandeenvoieStA.Vitesse = i;
 	} else if (strcmp(params, "MOB") == 0 ) { 
-			ptrcommande = split_element(ptrcommande);
-			i = int_neg_or_positiv(0, params);
-			if (i == 0) {	commandeenvoieStA.Etat_DCT_Obst = DCT_non;}
-			else if (i == 1) {commandeenvoieStA.Etat_DCT_Obst = oui_180;}
-			else {commandeenvoieStA.Etat_DCT_Obst = oui_360;}
-			ptrcommande = split_element(ptrcommande);
-			if (params[0] == 'A' ) {
-				args = param_complexe(params);
-				if (args.valeur > 5 && args.valeur < 45) {commandeenvoieStA.DCT_Obst_Resolution = args.valeur;}
-				else { commandeenvoieStA.DCT_Obst_Resolution = 30; }
-			} else { commandeenvoieStA.DCT_Obst_Resolution = 30; }
+			Convertion_Detection(ptrcommande);
 	} else if (strcmp(params, "CS") == 0) {
 			Convertion_Servomoteur(ptrcommande);
 	} else if (strcmp(params, "MI") == 0 || strcmp(params, "ME") == 0 ) {
@@ -446,6 +462,34 @@ void Convertion_Mouvement(char *mouvement, char* ptrcommande) {
 	}				
 }
 
+void Convertion_Detection(char* ptrcommande) {
+	// But : Fonction de gestion de la détection d'obstacle
+	// Input : 
+	//		- *ptrcommande : pointeur vers les paramètres possibles 
+	// Output : 
+	//		none
+	// Valeurs par défauts
+	commandeenvoieStA.DCT_Obst_Resolution = 30;
+	commandeenvoieStA.Etat_DCT_Obst = oui_360;
+	// Boucle des paramètres
+	while (fin_commande == 0) {
+		// Récupération du paramètre
+		ptrcommande = split_element(ptrcommande);
+		// Cas : Angle détection
+		if( params[0] == '1' || params[0] == '0'|| params[0] == '2') {
+			i = int_neg_or_positiv(0, params);
+			if (i == 0) {	commandeenvoieStA.Etat_DCT_Obst = DCT_non;}
+			else if (i == 1) {commandeenvoieStA.Etat_DCT_Obst = oui_180;}
+			else {commandeenvoieStA.Etat_DCT_Obst = oui_360;}
+		}
+		// Cas :Résolution angulaire
+		if (params[0] == 'A' ) {
+			args = param_complexe(params);
+			if (args.valeur > 5 && args.valeur < 45) {commandeenvoieStA.DCT_Obst_Resolution = args.valeur;}
+			else { commandeenvoieStA.DCT_Obst_Resolution = 30; }
+		} 
+	}
+}
 void Convertion_Servomoteur(char* ptrcommande) {	
 	// But : Fonction de gestion des servomoteurs
 	// Input : 
@@ -519,25 +563,29 @@ void Convertion_Lumineux(char* params, char* ptrcommande) {
 		while (fin_commande == 0) {
 			// Récupérations et convertions des paramètres 
 			ptrcommande = split_element(ptrcommande);
-			args = param_complexe(params);
-			// Différents cas possibles 
-			if ( args.param == 'I') {
-				if ( args.valeur > 0 && args.valeur < 101) {
-					commandeenvoieStA.Lumiere_Intensite = args.valeur;
+			// Si l'argument est complexe
+			if (params[1] == ':') {
+				args = param_complexe(params);
+				// Différents cas possibles 
+				if ( args.param == 'I') {
+					if ( args.valeur > 0 && args.valeur < 101) {
+						commandeenvoieStA.Lumiere_Intensite = args.valeur;
+					}
+				} else if ( args.param == 'D') {
+					if ( args.valeur > 0 && args.valeur < 101) {
+						commandeenvoieStA.Lumiere_Duree = args.valeur;
+					}
+				} else if ( args.param == 'E') {
+					if ( args.valeur > 0 && args.valeur < 101) {
+						commandeenvoieStA.Lumire_Extinction = args.valeur;
+					}
+				} else if ( args.param == 'N') {
+					if ( args.valeur > 0 && args.valeur < 101) {
+						commandeenvoieStA.Lumiere_Intensite = args.valeur;
+					}
 				}
-			} else if ( args.param == 'D') {
-				if ( args.valeur > 0 && args.valeur < 101) {
-					commandeenvoieStA.Lumiere_Duree = args.valeur;
-				}
-			} else if ( args.param == 'E') {
-				if ( args.valeur > 0 && args.valeur < 101) {
-					commandeenvoieStA.Lumire_Extinction = args.valeur;
-				}
-			} else if ( args.param == 'N') {
-				if ( args.valeur > 0 && args.valeur < 101) {
-					commandeenvoieStA.Lumiere_Intensite = args.valeur;
-				}
-			}
+				
+			} // Sinon, ignoré
 		}
 	}
 }
@@ -580,4 +628,138 @@ void Convertion_Photo(char* params, char* ptrcommande) {
 			commandeenvoieStA.Etat_Photo = Photo_stop;
 	}
 }
-	
+
+void Convertion_A_to_S(void) {
+	// But : Convertion de la structure en string
+	// Input : 
+	//		none
+	// Output : 
+	//		none
+	// Initialisation des variables
+	message_is_set = 0;
+	ptrmessage = &message[0];
+	// Différents cas possible 
+	// Si le message en lien avec l'état 
+	if (informationenvoieAtS.Etat_Invite == Invite_oui && message_is_set==0) {
+		message_is_set= Convertion_Invite(ptrmessage); 
+	}
+	// Si le message en lien avec l'arrivé
+	if (informationenvoieAtS.Etat_BUT_Mouvement == BUT_Atteint_oui && message_is_set==0) {
+		message_is_set= Convertion_Arrive(ptrmessage); 
+	}
+	// Si le message en lien avec le courant
+	if (informationenvoieAtS.Etat_RESULT_Courant == RESULT_Courant_oui && message_is_set==0) {
+		Convertion_Mesure('I',ptrmessage);
+	}
+	// Si le message en lien avec l'énergie
+	if (informationenvoieAtS.Etat_RESULT_Energie == RESULT_Energie_oui && message_is_set==0) {
+		Convertion_Mesure('E',ptrmessage);
+	}
+	// Si le message en lien avec l'angle
+	if (informationenvoieAtS.Etat_RESULT_Position == RESULT_Position_oui && message_is_set==0) {
+		//TODO : 
+	}
+	// Si le message est initialisé
+	if (message_is_set==1) {
+		ptrmessage = ajout_char(ptrmessage, '\r');
+	}		
+}	
+
+char Convertion_Invite(char *ptrmessage) {
+	// But : Fonction Invité de Commande
+	// Input : 
+	//		- *ptrmessage : pointeur vers le char[] poour le message
+	// Output : 
+	//		- char : pour vérifier le bo n déroulement 
+	// Ajout de la partie Information 
+	ptrmessage = ajout_char(ptrmessage, 'I');
+	ptrmessage = ajout_char(ptrmessage, ' '); 
+	// Boucle Tant que le message n'est pas finie  
+	while(*informationenvoieAtS.MSG_Invit != '\0') {		
+		ptrmessage = ajout_char(ptrmessage,*informationenvoieAtS.MSG_Invit);
+	}
+	return '1';
+}
+
+char Convertion_Arrive(char *ptrmessage) {
+	// But : Fonction Arrivé 
+	// Input : 
+	//		- *ptrmessage : pointeur vers le char[] poour le message
+	// Output : 
+	//		- char : pour vérifier le bo n déroulement 
+	// Ajout de la partie Information 
+	ptrmessage = ajout_char(ptrmessage, 'B');
+	return '1';
+}
+
+char Convertion_Mesure(char type, char *ptrmessage) {
+	// But : Fonction Mesure
+	// Input : 
+	//		- *ptrmessage : pointeur vers le char[] poour le message
+	// Output : 
+	//		- char : pour vérifier le bo n déroulement 
+	// Ajout de la partie Information 
+	ptrmessage = ajout_char(ptrmessage, 'K');
+	// Cas : Courant 
+	if (type == 'I') {
+		// Ajout de ' ' et valeur 
+		ptrmessage = ajout_char(ptrmessage, type);
+		ptrmessage = ajout_char(ptrmessage, ' ');
+		ptrbuffer = convertion_int_array(informationenvoieAtS.Mesure_Courant);
+		ajout_char_array(ptrbuffer,ptrmessage);
+		return 1;
+	}
+	// Cas : Energie
+	if (type == 'E') {
+		// Ajout de ' ' et valeur 
+		ptrmessage = ajout_char(ptrmessage, type);
+		ptrmessage = ajout_char(ptrmessage, ' ');
+		ptrbuffer = convertion_int_array(informationenvoieAtS.Mesure_Energie);
+		ajout_char_array(ptrbuffer,ptrmessage);
+		return 1;
+	}
+	ptrmessage--;
+	return 0;
+}
+
+char Convertion_Info_Obstacle(char *ptrmessage) {
+	// Todo :A comprendre mdrrrr
+	return 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
