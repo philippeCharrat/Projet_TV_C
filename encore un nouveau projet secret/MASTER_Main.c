@@ -309,7 +309,7 @@ char* convertion_int_array(int i) {
 }
 
 void ajout_char_array(char* ptrbuffer, char* ptrmessage) {
-		// But : Convertir plusieurs chars vers un int (absolue) : ['1','2'] => 12
+	// But : Convertir plusieurs chars vers un int (absolue) : ['1','2'] => 12
 	// Input : 
 	//		- *ptrmessage : pointeur vers le message
 	//		- *ptrbuffer : pointeur vers le buffer de int
@@ -628,6 +628,10 @@ void Convertion_Photo(char* params, char* ptrcommande) {
 			commandeenvoieStA.Etat_Photo = Photo_stop;
 	}
 }
+
+//-----------------------------------------------------------------------------
+// Fonctions Convertion Structure vers String
+//-----------------------------------------------------------------------------
 
 void Convertion_A_to_S(void) {
 	// But : Convertion de la structure en string
