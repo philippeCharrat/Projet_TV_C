@@ -43,13 +43,14 @@ struct argument_complexe param_complexe(char* params);
 int int_neg_or_positiv(int min, char* params);
 char* ajout_char(char* ptrmessage, char c);
 char* convertion_int_array(int); 
-void ajout_char_array(char* ptrbuffer, char* ptrmessage);
-
+char* ajout_char_array(char* ptrbuffer, char* ptrmessage);
+void prepare_message_random(void);
 
 // Partie : Convertion String to Structure (Array)
 void Convertion_S_to_A(void);
 void Convertion_Etat(char etat, char* ptrcommande);
 void Convertion_Mouvement(char *mouvement, char* ptrcommande);
+void  Convertion_Sonore(char* ptrcommande);
 void Convertion_Detection(char* ptrcommande);
 void Convertion_Servomoteur(char* ptrcommande);
 void Convertion_Coord(char* params,char* ptrcommande);
@@ -62,12 +63,13 @@ char Convertion_Invite(char *ptrmessage);
 char Convertion_Arrive(char *ptrmessage);
 char Convertion_Mesure(char type, char *ptrmessage);
 char Convertion_Info_Obstacle(char *ptrmessage);
+char Convertion_Position(char *ptrmessage);
 
 	
 // Variables globales utiles
-char fin_de_commande;
 char bit_reception_UART;
 char message_is_set;
+char message_is_ready;
 int i,j,k,m,fin_commande;
 
 // Variables char[] 
@@ -99,11 +101,8 @@ void main (void) {
 	Init_Device();  
 	Config_Timer();
 	Config_UART0();
-	
-	//Initialisation de variables
-	fin_de_commande = 0;
 	Send_string("SYSTEME OK !");
-	Send_char('\n');
+	
 
 	while (1){
 		
@@ -121,16 +120,22 @@ void main (void) {
 			// Si fin de commande 550022hbhb
 			if (bit_reception_UART == '\r'){			
 				// Affichage en console
-				Send_char('\n');
 				Send_string("Commande recue : ");
 				Send_string(commande);
 				// Convertion de commande vers struct
 				Convertion_S_to_A();
 				i = 0;
 				fin_commande = 0;
-				Send_char('\n');
+			}
+			if (bit_reception_UART == 'q'){			
+				prepare_message_random();
 			}
 			REN0 = 1;			
+		}
+		if (message_is_ready == 1) {
+			Send_char('\n');
+			Convertion_A_to_S();
+			message_is_ready = 0;
 		}
 	}
 }
@@ -364,7 +369,7 @@ if (i/1000 != 0) {
 	return &buffer[0];
 }
 
-void ajout_char_array(char* ptrbuffer, char* ptrmessage) {
+char* ajout_char_array(char* ptrbuffer, char* ptrmessage) {
 	// But : Convertir plusieurs chars vers un int (absolue) : ['1','2'] => 12
 	// Input : 
 	//		- *ptrmessage : pointeur vers le message
@@ -374,11 +379,11 @@ void ajout_char_array(char* ptrbuffer, char* ptrmessage) {
 	while (1==1){
 		// Si le char est un digit
 		if( *ptrbuffer == '1' || *ptrbuffer == '2'|| *ptrbuffer == '3'|| *ptrbuffer == '4'|| *ptrbuffer == '5'|| *ptrbuffer == '6'|| *ptrbuffer == '7'|| *ptrbuffer == '8'|| *ptrbuffer == '9'|| *ptrbuffer == '0') {
-			ajout_char(ptrmessage, *ptrbuffer);
+			ptrmessage = ajout_char(ptrmessage, *ptrbuffer);
 			ptrbuffer++;
 		}
 		else { 
-			break;
+			return ptrmessage;
 		}
 	}
 }
@@ -390,7 +395,9 @@ char* ajout_char(char* ptrmessage, char c) {
 	// Output : 
 	//		- ptrmessage : pointeur incrémenté
 	*ptrmessage = c;
-	return ptrmessage++;
+	ptrmessage++;
+	//*ptrmessage	= '\0';
+	return ptrmessage;
 }
 
 //-----------------------------------------------------------------------------
@@ -411,36 +418,26 @@ void Convertion_S_to_A(void) {
 	ptrcommande = split_element(ptrcommande);
 	Send_string("En-tete : ");
 	Send_string(params);
-	Send_char('\n');
 	// Test des différents cas de figures 
 	if (params[0] == 'D' || params[0] == 'E' || params[0] == 'Q') {
 			Convertion_Etat(params[0],ptrcommande);
-	} else if (params[0] == 'A' || params[0] == 'B' || params[0] == 'S' || params[0] == 'G'|| strcmp(params, "RD") == 0 || strcmp(params, "RG") == 0 || strcmp(params, "RA") == 0|| strcmp(params, "TV") == 0) { 
-			Convertion_Mouvement(params,ptrcommande);
-	} else if (strcmp(params, "ASS") == 0) {
-			Send_string(params);
-			ptrcommande = split_element(ptrcommande);
-			i = int_neg_or_positiv(0, params);
-			commandeenvoieStA.Vitesse = i;
+	} else if (strcmp(params, "ASS") == 0) { 
+			Convertion_Sonore(ptrcommande);
 	} else if (strcmp(params, "MOB") == 0 ) {
-			Send_string(params);
 			Convertion_Detection(ptrcommande);
 	} else if (strcmp(params, "CS") == 0) {
-			Send_string(params);
 			Convertion_Servomoteur(ptrcommande);
 	} else if (strcmp(params, "MI") == 0 || strcmp(params, "ME") == 0 ) {
-			Send_string(params);
-			if (strcmp(params, "MI") == 0) {	commandeenvoieStA.Etat_Position = Mesure_I; }
-			else { commandeenvoieStA.Etat_Position = Mesure_E;}
+			if (strcmp(params, "MI") == 0) {	commandeenvoieStA.Etat_Energie = Mesure_I; }
+			else { commandeenvoieStA.Etat_Energie = Mesure_E;}
 	}else if (strcmp(params, "IPO") == 0 || strcmp(params, "POS") == 0) {
-			Send_string(params);
 			Convertion_Coord(params,ptrcommande);
 	} else if (strcmp(params, "L") == 0 || strcmp(params, "LS") == 0 ) {
-			Send_string(params);
 			Convertion_Lumineux(params, ptrcommande);
 	}else if (strcmp(params, "PPH") == 0 || strcmp(params, "SPH") == 0 ) {
-		Send_string(params);	
-		Convertion_Photo(params, ptrcommande);
+			Convertion_Photo(params, ptrcommande);
+	} else if (params[0] == 'A' || params[0] == 'B' || params[0] == 'S' || params[0] == 'G'|| strcmp(params, "RD") == 0 || strcmp(params, "RG") == 0 || strcmp(params, "RA") == 0|| strcmp(params, "TV") == 0) { 
+			Convertion_Mouvement(params,ptrcommande);
 	} else {
 			//erreur_commande();
 	}
@@ -491,7 +488,6 @@ void Convertion_Mouvement(char *mouvement, char* ptrcommande) {
 				ptrcommande = split_element(ptrcommande);
 				j = int_neg_or_positiv(0, params);
 				if (j > 5 && j< 100) { 
-					Send_string("\n Vitesse : ");
 					Send_int(j);
 					commandeenvoieStA.Vitesse = j;	
 				}
@@ -541,6 +537,22 @@ void Convertion_Mouvement(char *mouvement, char* ptrcommande) {
 	}				
 }
 
+void  Convertion_Sonore(char* ptrcommande){	
+	// But : Modification de l'état sonore
+	// Input : 
+	//		- *ptrcommande : pointeur vers les paramètres possibles 
+	// Output : 
+	//		none
+	// Valeurs par défauts
+	ptrcommande = split_element(ptrcommande);
+			if (*ptrcommande == '0') { commandeenvoieStA.Etat_ACQ_Son = ACQ_non; }
+			else {
+				commandeenvoieStA.Etat_ACQ_Son = ACQ_oui;
+					i = int_neg_or_positiv(0, params);
+					if (i > 0 && i < 100) {	commandeenvoieStA.ACQ_Duree = i; }
+					else { commandeenvoieStA.ACQ_Duree = 99; }
+			}
+		}
 void Convertion_Detection(char* ptrcommande) {
 	// But : Fonction de gestion de la détection d'obstacle
 	// Input : 
@@ -582,10 +594,12 @@ void Convertion_Servomoteur(char* ptrcommande) {
 	while (fin_commande == 0) {
 		// Récupération des paramètres
 		ptrcommande = split_element(ptrcommande);
+		
 		// Cas : Servomoteur Horizontale
 		if (params[0] == 'H') { commandeenvoieStA.Etat_Servo = Servo_H; }
 		// Cas : Servomoteur Verticale
-		if (params[0] == 'V') { commandeenvoieStA.Etat_Servo = Servo_V; }
+		if (params[0] == 'V') { 
+			commandeenvoieStA.Etat_Servo = Servo_V; }
 		// Ajout de l'angle
 		if (params[0] == 'A') {
 			args = param_complexe(params);	
@@ -660,7 +674,7 @@ void Convertion_Lumineux(char* params, char* ptrcommande) {
 					}
 				} else if ( args.param == 'N') {
 					if ( args.valeur > 0 && args.valeur < 101) {
-						commandeenvoieStA.Lumiere_Intensite = args.valeur;
+						commandeenvoieStA.Lumiere_Nbre = args.valeur;
 					}
 				}
 				
@@ -739,20 +753,22 @@ void Convertion_A_to_S(void) {
 	}
 	// Si le message en lien avec le courant
 	if (informationenvoieAtS.Etat_RESULT_Courant == RESULT_Courant_oui && message_is_set==0) {
-		Convertion_Mesure('I',ptrmessage);
+		message_is_set=Convertion_Mesure('I',ptrmessage);
 	}
 	// Si le message en lien avec l'énergie
 	if (informationenvoieAtS.Etat_RESULT_Energie == RESULT_Energie_oui && message_is_set==0) {
-		Convertion_Mesure('E',ptrmessage);
+		message_is_set=Convertion_Mesure('E',ptrmessage);
 	}
 	// Si le message en lien avec l'angle
 	if (informationenvoieAtS.Etat_RESULT_Position == RESULT_Position_oui && message_is_set==0) {
-		//TODO : 
+		
+		message_is_set=Convertion_Position(ptrmessage);
 	}
 	// Si le message est initialisé
 	if (message_is_set==1) {
 		ptrmessage = ajout_char(ptrmessage, '\r');
-	}		
+	}
+	Send_string(ptrmessage);
 }	
 
 char Convertion_Invite(char *ptrmessage) {
@@ -796,7 +812,7 @@ char Convertion_Mesure(char type, char *ptrmessage) {
 		ptrmessage = ajout_char(ptrmessage, type);
 		ptrmessage = ajout_char(ptrmessage, ' ');
 		ptrbuffer = convertion_int_array(informationenvoieAtS.Mesure_Courant);
-		ajout_char_array(ptrbuffer,ptrmessage);
+		ptrmessage = ajout_char_array(ptrbuffer,ptrmessage);
 		return 1;
 	}
 	// Cas : Energie
@@ -805,7 +821,7 @@ char Convertion_Mesure(char type, char *ptrmessage) {
 		ptrmessage = ajout_char(ptrmessage, type);
 		ptrmessage = ajout_char(ptrmessage, ' ');
 		ptrbuffer = convertion_int_array(informationenvoieAtS.Mesure_Energie);
-		ajout_char_array(ptrbuffer,ptrmessage);
+		ptrmessage = ajout_char_array(ptrbuffer,ptrmessage);
 		return 1;
 	}
 	ptrmessage--;
@@ -816,4 +832,32 @@ char Convertion_Info_Obstacle(char *ptrmessage) {
 	// Todo :A comprendre mdrrrr
 	ptrmessage++;
 	return 1;
+}
+
+char Convertion_Position(char *ptrmessage) {
+	ptrmessage = ajout_char(ptrmessage, 'V');
+	ptrmessage = ajout_char(ptrmessage, 'P');
+	ptrmessage = ajout_char(ptrmessage, 'O');
+	ptrmessage = ajout_char(ptrmessage, ' ');
+	ptrmessage = ajout_char(ptrmessage, ':');
+	ptrbuffer = convertion_int_array(informationenvoieAtS.Pos_Coord_X);
+	ptrmessage = ajout_char_array(ptrbuffer,ptrmessage);
+	ptrmessage = ajout_char(ptrmessage, ' ');
+	ptrmessage = ajout_char(ptrmessage, 'Y');
+	ptrmessage = ajout_char(ptrmessage, ':');
+	ptrbuffer = convertion_int_array(informationenvoieAtS.Pos_Coord_Y);
+	ptrmessage = ajout_char_array(ptrbuffer,ptrmessage);
+	ptrmessage = ajout_char(ptrmessage, ' ');
+	ptrmessage = ajout_char(ptrmessage, 'A');
+	ptrmessage = ajout_char(ptrmessage, ':');
+	ptrbuffer = convertion_int_array(informationenvoieAtS.Pos_Angle);
+	ptrmessage = ajout_char_array(ptrbuffer,ptrmessage);
+	return 1;
+}
+
+void prepare_message_random(void) {
+	message_is_ready = 1;
+	informationenvoieAtS.Etat_RESULT_Position = RESULT_Position_oui ;
+	informationenvoieAtS.Pos_Coord_X = 12;
+	informationenvoieAtS.Pos_Coord_Y = 52;
 }
